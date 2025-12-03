@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Let's Play with Saturn</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #000;
+        }
+
+        canvas {
+            display: block;
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 1;
+        }
+
+        #video-debug {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            z-index: 2;
+            width: 160px;
+            height: 120px;
+            border: 1px solid #444;
+            transform: scaleX(-1);
+            opacity: 0.5;
+            border-radius: 8px;
+        }
+
+        #ui {
+            position: absolute;
+            top: 20px;
+            width: 100%;
+            text-align: center;
+            color: #fff;
+            font-family: 'Courier New', sans-serif;
+            z-index: 3;
+            pointer-events: none;
+            text-shadow: 0 0 10px #000;
+        }
+
+        h1 {
+            margin: 0;
+            font-size: 1.2rem;
+            letter-spacing: 2px;
+        }
+
+        p {
+            font-size: 0.8rem;
+            color: #aaa;
+        }
+
+        #status {
+            color: #00ffaa;
+            font-weight: bold;
+        }
+    </style>
+
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+</head>
+
+<body>
+
+    <div id="ui">
+        <h1>PROJECT: SATURN</h1>
+        <p>No Hand: Scatter | Open Hand: Assemble | Pinch: Shrink | Move Hand → Rotate</p>
+        <div id="status">Initializing AI...</div>
+    </div>
+
+    <video id="video-debug" playsinline></video>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+
+        // --- CONFIG ---
+        const PLANET_PARTICLES = 4000;
+        const RING_PARTICLES = 6000;
+        const SCATTER_RANGE = 4000;
+
+        let currentState = "SCATTER";
+
+        // Hand control
+        let handX = 0;
+        let handY = 0;
+        let smoothX = 0;
+        let smoothY = 0;
+
+        // --- SCENE SETUP ---
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x020202);
+
+        const camera = new THREE.PerspectiveCamera(
+            75,
+            window.innerWidth / window.innerHeight,
+            1,
+            5000
+        );
+        camera.position.set(0, 100, 600);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        document.body.appendChild(renderer.domElement);
+
+        // --- PARTICLES ---
+        const totalParticles = PLANET_PARTICLES + RING_PARTICLES;
+        const geometry = new THREE.BufferGeometry();
+
+        const currentPositions = new Float32Array(totalParticles * 3);
+        const targetPositions = new Float32Array(totalParticles * 3);
+        const scatterPositions = new Float32Array(totalParticles * 3);
+        const colors = new Float32Array(totalParticles * 3);
+
+        const colorPlanet = new THREE.Color(0xd2b48c);
+        const colorRing = new THREE.Color(0xffffff); // UPDATED → Pure white rings
+
+        function setVec(arr, i, x, y, z) {
+            arr[i * 3] = x;
+            arr[i * 3 + 1] = y;
+            arr[i * 3 + 2] = z;
+        }
+
+        // A. Planet
+        for (let i = 0; i < PLANET_PARTICLES; i++) {
+            const r = 100 * Math.cbrt(Math.random());
+            const theta = Math.random() * 2 * Math.PI;
+            const phi = Math.acos(2 * Math.random() - 1);
+
+            const x = r * Math.sin(phi) * Math.cos(theta);
+            const y = r * Math.sin(phi) * Math.sin(theta);
+            const z = r * Math.cos(phi);
+
+            setVec(targetPositions, i, x, y, z);
+            setVec(colors, i, colorPlanet.r, colorPlanet.g, colorPlanet.b);
+        }
+
+        // B. Rings
+        for (let i = PLANET_PARTICLES; i < totalParticles; i++) {
+            const innerR = 140;
+            const outerR = 280;
+            const r = innerR + Math.random() * (outerR - innerR);
+            const theta = Math.random() * Math.PI * 2;
+
+            const x = r * Math.cos(theta);
+            const z = r * Math.sin(theta);
+            const y = (Math.random() - 0.5) * 5;
+
+            setVec(targetPositions, i, x, y, z);
+            setVec(colors, i, colorRing.r, colorRing.g, colorRing.b);
+        }
+
+        // C. Scatter positions
+        for (let i = 0; i < totalParticles; i++) {
+            const x = (Math.random() - 0.5) * SCATTER_RANGE;
+            const y = (Math.random() - 0.5) * SCATTER_RANGE;
+            const z = (Math.random() - 0.5) * SCATTER_RANGE;
+
+            setVec(scatterPositions, i, x, y, z);
+            setVec(currentPositions, i, x, y, z);
+        }
+
+        geometry.setAttribute('position', new THREE.BufferAttribute(currentPositions, 3));
+        geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+        const texture = new THREE.TextureLoader().load(
+            "https://threejs.org/examples/textures/sprites/spark1.png"
+        );
+
+        const material = new THREE.PointsMaterial({
+            size: 4,
+            map: texture,
+            vertexColors: true,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+            transparent: true,
+            opacity: 0.8
+        });
+
+        const particleSystem = new THREE.Points(geometry, material);
+        particleSystem.rotation.z = 27 * (Math.PI / 180);
+        scene.add(particleSystem);
+
+        // --- MEDIAPIPE ---
+        const videoElement = document.getElementById("video-debug");
+        const statusElement = document.getElementById("status");
+
+        function onResults(results) {
+            if (!results.multiHandLandmarks || results.multiHandLandmarks.length === 0) {
+                currentState = "SCATTER";
+                statusElement.innerText = "Status: SCATTER (No Hand)";
+                statusElement.style.color = "#ff4444";
+                return;
+            }
+
+            const hand = results.multiHandLandmarks[0];
+            const thumb = hand[4];
+            const index = hand[8];
+
+            // Map index finger -> rotation control
+            handX = (index.x - 0.5) * 2;  // left-right
+            handY = (0.5 - index.y) * 2;  // up-down
+
+            // Pinch detection
+            const dx = thumb.x - index.x;
+            const dy = thumb.y - index.y;
+            const dz = thumb.z - index.z;
+            const distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
+
+            if (distance < 0.06) {
+                currentState = "SHRINK";
+                statusElement.innerText = "Status: COMPRESSING (Pinch)";
+                statusElement.style.color = "#ffff00";
+            } else {
+                currentState = "ASSEMBLE";
+                statusElement.innerText = "Status: STABLE (Hand Open)";
+                statusElement.style.color = "#00ffaa";
+            }
+        }
+
+        const hands = new Hands({
+            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`,
+        });
+
+        hands.setOptions({
+            maxNumHands: 1,
+            modelComplexity: 1,
+            minDetectionConfidence: 0.5,
+            minTrackingConfidence: 0.5
+        });
+
+        hands.onResults(onResults);
+
+        const cameraFeed = new Camera(videoElement, {
+            onFrame: async () => {
+                await hands.send({ image: videoElement });
+            },
+            width: 640,
+            height: 480
+        });
+        cameraFeed.start();
+
+        // --- ANIMATION ---
+        const clock = new THREE.Clock();
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            const positions = geometry.attributes.position.array;
+
+            // Smooth out hand movement (avoid shaky rotation)
+            smoothX += (handX - smoothX) * 0.1;
+            smoothY += (handY - smoothY) * 0.1;
+
+            // Control rotation using hand movement
+            particleSystem.rotation.y += smoothX * 0.05; // left-right movement
+            particleSystem.rotation.x = smoothY * 0.3;   // up-down tilt
+
+            for (let i = 0; i < totalParticles; i++) {
+                const px = positions[i * 3];
+                const py = positions[i * 3 + 1];
+                const pz = positions[i * 3 + 2];
+
+                let tx, ty, tz;
+
+                if (currentState === "SCATTER") {
+                    tx = scatterPositions[i * 3];
+                    ty = scatterPositions[i * 3 + 1];
+                    tz = scatterPositions[i * 3 + 2];
+                    positions[i * 3] += (tx - px) * 0.02;
+                    positions[i * 3 + 1] += (ty - py) * 0.02;
+                    positions[i * 3 + 2] += (tz - pz) * 0.02;
+
+                } else if (currentState === "ASSEMBLE") {
+                    tx = targetPositions[i * 3];
+                    ty = targetPositions[i * 3 + 1];
+                    tz = targetPositions[i * 3 + 2];
+                    positions[i * 3] += (tx - px) * 0.05;
+                    positions[i * 3 + 1] += (ty - py) * 0.05;
+                    positions[i * 3 + 2] += (tz - pz) * 0.05;
+
+                } else if (currentState === "SHRINK") {
+                    tx = targetPositions[i * 3] * 0.1;
+                    ty = targetPositions[i * 3 + 1] * 0.1;
+                    tz = targetPositions[i * 3 + 2] * 0.1;
+                    positions[i * 3] += (tx - px) * 0.1;
+                    positions[i * 3 + 1] += (ty - py) * 0.1;
+                    positions[i * 3 + 2] += (tz - pz) * 0.1;
+                }
+            }
+
+            geometry.attributes.position.needsUpdate = true;
+            renderer.render(scene, camera);
+        }
+
+        animate();
+
+        window.addEventListener("resize", () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+
+</body>
+
+</html>
