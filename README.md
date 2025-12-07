@@ -8,16 +8,14 @@ The entire planet, including thousands of particles forming the globe and ring, 
 ## 🖼️ Demo Screenshots
 
 ### ✨ Saturn Fully Assembled
-![Saturn Assembled](<img width="1525" height="801" alt="image" src="https://github.com/user-attachments/assets/d74b6b12-7c17-41d4-8621-24f62b8c69a0" />
-)
+<img alt="image" src="https://github.com/user-attachments/assets/d74b6b12-7c17-41d4-8621-24f62b8c69a0" />
 
 ### 💥 Scatter Mode (No Hand Detected)
-![Scatter Mode](<img width="1499" height="840" alt="image" src="https://github.com/user-attachments/assets/37ec64fa-d882-4f88-a6f3-672e6a5e5173" />
-)
+<img width="1499" height="840" alt="image" src="https://github.com/user-attachments/assets/37ec64fa-d882-4f88-a6f3-672e6a5e5173" />
+
 
 ### 👌 Pinch → Shrink Mode
-![Shrink Mode](<img width="1514" height="814" alt="image" src="https://github.com/user-attachments/assets/499f73c6-3864-4520-90a3-a482eccdd29b" />
-)
+<img width="1514" height="814" alt="image" src="https://github.com/user-attachments/assets/499f73c6-3864-4520-90a3-a482eccdd29b" />
 
 
 ## 🚀 Features
